@@ -1,0 +1,164 @@
+
+#include <GPRS_Shield_Arduino.h>
+#include <SoftwareSerial.h>
+#include <Wire.h>
+#include <sim900.h>
+#include <avr/pgmspace.h>
+ 
+#include <TinyGPS.h>     // gps headers
+
+#define PIN_TX    52  //GSM rx of GSM
+#define PIN_RX    53  //tx of GSM
+#define BAUDRATE  9600
+
+#define MESSAGE_LENGTH 160
+
+
+/* This sample code demonstrates the normal use of a TinyGPS object.
+   It requires the use of SoftwareSerial, and assumes that you have a
+   4800-baud serial GPS device hooked up on pins 10(rx) and 11(tx).
+*/
+TinyGPS gps;
+SoftwareSerial ss(10, 11);   // gps serial initialization.... 
+                            // 10=rx  11=tx
+
+char message[MESSAGE_LENGTH];
+int messageIndex;
+
+char phone[16];
+char datetime[24];
+char loc1[10];
+char loc2[10];
+char loc[25];
+float flat, flon;  // latitude, longitude
+
+GPRS gprsTest(PIN_RX,PIN_TX,BAUDRATE);//RX,TX,PWR,BaudRate
+
+
+
+
+void setup() {
+  Serial.begin(9600);
+ pinMode(2,OUTPUT);
+
+  while(!gprsTest.init()) {
+      Serial.print("init error\r\n");
+      delay(1000);
+  }
+  delay(3000);  
+  Serial.println("Init Success, please send SMS message to me!");
+}
+
+
+void loop() 
+{
+    messageIndex = 0;
+   messageIndex = gprsTest.isSMSunread();
+  if(messageIndex == -1){                 //if any previous missed calls, message index =-1
+      messageIndex = messageIndex+2;      // to clear missed calls
+  }
+   Serial.println(messageIndex);
+   
+   if (messageIndex > 0) 
+   { 
+ 
+    read_sms();
+   
+   }
+}
+
+  void  read_sms(){
+      
+    Serial.print("message index = ");
+    Serial.println(messageIndex);
+      gprsTest.readSMS(messageIndex, message, MESSAGE_LENGTH, phone, datetime);           
+      //In order not to full SIM Memory, is better to delete it
+      gprsTest.deleteSMS(messageIndex);
+      Serial.print("From number: ");
+      Serial.println(phone);  
+      Serial.print("Datetime: ");
+      Serial.println(datetime);        
+      Serial.print("Recieved Message: ");
+      Serial.println(message);  
+
+        if (strcmp(message,"Track location")==0)
+        {
+          
+          get_gps_cords();//  call gps function to get coordinates
+         
+        }
+   }
+
+void get_gps_cords()
+{
+
+  Serial.println(" control from gps system");
+ss.begin(9600);
+  
+  bool newData = false;
+  unsigned long chars;
+  unsigned short sentences, failed;
+  float ssa = 0;
+
+  // For one second we parse GPS data and report some key values
+  Serial.println("entered gps function");
+  for (unsigned long start = millis(); millis() - start < 1000;)
+  //Serial.println(" entered FOR");
+  {
+    
+    while (ss.available())
+    {
+      char c = ss.read();
+       //Serial.write(c); // uncomment this line if you want to see the GPS data flowing
+      if (gps.encode(c)) // Did a new valid sentence come in?
+       { newData = true;
+            Serial.println("Did a new valid sentence come in?");
+       }
+    }
+    
+  }
+
+  if (newData == true)
+  {
+    Serial.println(" entered 3/4 way");
+    unsigned long age;
+    gps.f_get_position(&flat, &flon, &age);
+    Serial.print("LATITUDE=");
+    Serial.println(flat == TinyGPS::GPS_INVALID_F_ANGLE ? 0.0 : flat, 6);
+    delay(1000);
+    Serial.print(" LONGITUDE=");
+    Serial.println(flon == TinyGPS::GPS_INVALID_F_ANGLE ? 0.0 : flon, 6);
+    delay(5000);
+    Serial.println("control to send sms");
+
+    SendCordinates();
+
+void SendCordinates()  // to send cordinates
+{
+  GPRS gprs_Test(PIN_RX,PIN_TX,BAUDRATE);
+   Serial.begin(9600);
+ while(!gprs_Test.init()) {
+      delay(1000);
+      Serial.print("init error\r\n");
+  }  
+  Serial.println("gprs init success");
+  Serial.println("start to send message ...");
+  Serial.println(flat,6); Serial.println(flon,6);
+
+char car1[20] = "";
+  char car3[25] = "";
+  dtostrf(flat,2,6,car1);
+  char car2[20] = "";
+  dtostrf(flon,2,6,car2);
+   Serial.println(car1);
+   String str1(car1);
+   String str2(car2);
+   str1 += " ";
+   str1 += str2;
+   Serial.println(str1);
+   str1.toCharArray(car3,20);
+   Serial.println(car3);
+  gprs_Test.sendSMS(phone,(car3));
+  
+}
+
